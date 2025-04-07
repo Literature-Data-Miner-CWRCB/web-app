@@ -15,6 +15,7 @@ import { ProcessingIndicator } from "./processing-indicator";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { DatasetResults } from "@/components/results/dataset-results";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const filterOptions: FilterOption[] = [
 	{ id: "peer-reviewed", name: "Peer-reviewed only" },
@@ -59,32 +60,48 @@ export function DatasetBuilder() {
 	return (
 		<div className="space-y-6">
 			<div className="grid gap-6">
-				<QueryInput value={searchQuery} onChange={setSearchQuery} />
+				<Card>
+					<CardHeader>
+						<CardTitle>Dataset Query</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<div className="grid gap-6">
+							{/* Query input section */}
+							<QueryInput
+								value={searchQuery}
+								onChange={setSearchQuery}
+							/>
 
-				<div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-					<FilterOptions
-						options={filterOptions}
-						selectedFilters={selectedFilters}
-						onFilterChange={setSelectedFilters}
-					/>
-					<OutputFormatSelector
-						value={outputFormat}
-						onChange={setOutputFormat}
-					/>
-					<div className="flex flex-col">
-						<Label htmlFor="row-limit" className="mb-2">
-							Rows ({rowLimit})
-						</Label>
-						<Slider
-							id="row-limit"
-							min={10}
-							max={1000}
-							step={10}
-							value={[rowLimit]}
-							onValueChange={(values) => setRowLimit(values[0])}
-						/>
-					</div>
-				</div>
+							{/* Selectors in responsive grid */}
+							<div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+								<FilterOptions
+									options={filterOptions}
+									selectedFilters={selectedFilters}
+									onFilterChange={setSelectedFilters}
+								/>
+								<OutputFormatSelector
+									value={outputFormat}
+									onChange={setOutputFormat}
+								/>
+								<div className="flex flex-col">
+									<Label htmlFor="row-limit" className="mb-2">
+										Rows ({rowLimit})
+									</Label>
+									<Slider
+										id="row-limit"
+										min={10}
+										max={1000}
+										step={10}
+										value={[rowLimit]}
+										onValueChange={(values) =>
+											setRowLimit(values[0])
+										}
+									/>
+								</div>
+							</div>
+						</div>
+					</CardContent>
+				</Card>
 
 				<SchemaDefinition schema={schema} onSchemaChange={setSchema} />
 

@@ -7,7 +7,7 @@ export default function Home() {
 		<MainLayout>
 			<div className="mx-auto max-w-5xl">
 				<h1 className="mb-8 text-center text-3xl font-bold">
-					Dataset Generation From Research Papers
+					What dataset do you want to build?
 				</h1>
 				<DatasetBuilder />
 			</div>
