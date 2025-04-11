@@ -1,4 +1,6 @@
 fastapi[standard]
+celery
+flower
 uvicorn
 supabase
 beautifulsoup4
@@ -14,3 +16,4 @@ llama-index-vector-stores-qdrant
 python-json-logger
 platformdirs
 python-multipart
+redis
