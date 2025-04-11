@@ -31,5 +31,21 @@ RUN sed -i 's/\r$//g' /entrypoint.sh && chmod +x /entrypoint.sh
 COPY ./compose/dev/start.sh /start.sh
 RUN sed -i 's/\r$//g' /start.sh && chmod +x /start.sh
 
+# Copy celery worker start script and make it executable
+COPY ./compose/dev/celery/worker/start.sh /start-celery-worker.sh
+RUN sed -i 's/\r$//g' /start-celery-worker.sh && chmod +x /start-celery-worker.sh
+
+# Copy celery beat start script and make it executable
+COPY ./compose/dev/celery/beat/start.sh /start-celery-beat.sh
+RUN sed -i 's/\r$//g' /start-celery-beat.sh && chmod +x /start-celery-beat.sh
+
+# Copy celery flower start script and make it executable
+COPY ./compose/dev/celery/flower/start.sh /start-celery-flower.sh
+RUN sed -i 's/\r$//g' /start-celery-flower.sh && chmod +x /start-celery-flower.sh
+
+# Clean up pyc files to reduce memory footprint
+RUN find /app -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
+    find /app -name "*.pyc" -delete
+
 # Command to run the application
 ENTRYPOINT ["/entrypoint.sh"]

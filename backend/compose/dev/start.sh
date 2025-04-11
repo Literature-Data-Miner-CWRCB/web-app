@@ -13,7 +13,6 @@ uvicorn main:app \
     --port 8000 \
     --workers $WORKERS \
     --limit-concurrency 50 \
-    --no-access-log \
     --timeout-keep-alive 30 \
     --no-use-colors \
     --log-level info
