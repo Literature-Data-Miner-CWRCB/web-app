@@ -1,0 +1,16 @@
+fastapi[standard]
+uvicorn
+supabase
+beautifulsoup4
+habanero
+requests
+pydantic
+pydantic-settings
+Jinja2
+google-genai
+llama-index-core
+llama-index-llms-groq
+llama-index-vector-stores-qdrant
+python-json-logger
+platformdirs
+python-multipart

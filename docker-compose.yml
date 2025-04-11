@@ -1,0 +1,12 @@
+services:
+  web:
+    build: 
+      context: backend
+      dockerfile: ./compose/dev/Dockerfile
+    ports:
+      - "8000:8000"
+    command: ["/start.sh"]
+    volumes:
+      - ./backend:/app
+    env_file: 
+      - ./backend/.env
