@@ -1,7 +1,7 @@
 """
 Celery tasks for asynchronous processing of data generation.
 """
-
+import traceback
 import logging
 import asyncio
 from typing import Dict, Any, Optional
@@ -16,40 +16,30 @@ from utils.pydantic_utils import create_model_from_json
 logger = logging.getLogger(__name__)
 
 
-class WebSocketTask(Task):
+class BaseTask(Task):
     """Base task that includes WebSocket communication capabilities."""
-
-    _loop = None
-
-    @property
-    def loop(self):
-        """Get or create an event loop for WebSocket async operations."""
-        if self._loop is None:
-            try:
-                self._loop = asyncio.get_event_loop()
-            except RuntimeError:
-                self._loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self._loop)
-        return self._loop
-
-    async def _send_update(self, client_id: str, data: Dict[str, Any]):
-        """Send an update via WebSocket."""
-        try:
-            await connection_manager.send_update(client_id, data)
-        except Exception as e:
-            logger.error(f"Failed to send WebSocket update to {client_id}: {str(e)}")
 
     def send_update(self, client_id: str, data: Dict[str, Any]):
         """Synchronous wrapper to send WebSocket updates from Celery tasks."""
-        if client_id:
-            future = asyncio.run_coroutine_threadsafe(
-                self._send_update(client_id, data), self.loop
-            )
+        if not client_id:
+            return
+
+        try:
+            # Create a new event loop for this specific update
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
             try:
-                # Wait for the result with a timeout to avoid blocking indefinitely
-                future.result(timeout=5)
-            except Exception as e:
-                logger.error(f"Error sending WebSocket update: {str(e)}")
+                # Run the async operation in the new loop
+                loop.run_until_complete(connection_manager.send_update(client_id, data))
+            finally:
+                # Ensure the loop is closed properly
+                loop.close()
+
+        except Exception as e:
+            logger.error(
+                f"Error sending WebSocket update to client {client_id}: {str(e)}\n"
+            )
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         """Handle task failure by sending a WebSocket notification."""
@@ -70,9 +60,7 @@ class WebSocketTask(Task):
         super().on_failure(exc, task_id, args, kwargs, einfo)
 
 
-@celery_app.task(
-    bind=True, base=WebSocketTask, max_retries=2, name="tasks.generate_dataset"
-)
+@celery_app.task(bind=True, base=BaseTask, name="tasks.generate_dataset")
 def generate_dataset_task(
     self,
     user_query: str,
@@ -174,9 +162,12 @@ def generate_dataset_task(
         return result
 
     except Exception as e:
-        logger.error(f"Dataset generation error: {str(e)}", exc_info=True)
+        error_details = traceback.format_exc()
+        logger.error(
+            f"Dataset generation error: {str(e)}\n{error_details}", exc_info=True
+        )
 
-        # Try to send error via WebSocket
+        # Send error via WebSocket
         error_message = f"Error generating dataset: {str(e)}"
         self.send_update(
             client_id,
@@ -189,43 +180,6 @@ def generate_dataset_task(
                 "total": 100,
             },
         )
-
-        # Retry logic - retry up to max_retries with exponential backoff
-        retries = self.request.retries
-        max_retries = self.max_retries
-
-        if retries < max_retries:
-            logger.info(
-                f"Retrying task for client {client_id} ({retries+1}/{max_retries})"
-            )
-            self.send_update(
-                client_id,
-                {
-                    "status": "processing",
-                    "message": f"Retrying dataset generation ({retries+1}/{max_retries})",
-                    "progress": 0,
-                    "total": 100,
-                    "stage": "initialization",
-                },
-            )
-            # Retry with exponential backoff
-            raise self.retry(exc=e, countdown=2**retries * 30)
-        else:
-            # Final failure
-            error_message = (
-                f"Dataset generation failed after {max_retries} retries: {str(e)}"
-            )
-            self.send_update(
-                client_id,
-                {
-                    "status": "error",
-                    "message": error_message,
-                    "stage": "error",
-                    "error": str(e),
-                    "progress": 0,
-                    "total": 100,
-                },
-            )
 
         # Re-raise the exception to mark the task as failed
         raise
