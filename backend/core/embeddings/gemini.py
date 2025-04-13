@@ -91,3 +91,9 @@ class GoogleGenAIEmbedding(BaseEmbedding):
     async def _aget_text_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Asynchronously get text embeddings."""
         return await self._aembed_texts(texts, task_type="RETRIEVAL_DOCUMENT")
+
+    def embed_query(self, query: str) -> List[float]:
+        return self._get_query_embedding(query)
+
+    def embed_text(self, text: str) -> List[float]:
+        return self._get_text_embedding(text)
