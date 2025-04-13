@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str
     CELERY_RESULT_BACKEND: str
 
+    # Cohere
+    COHERE_API_KEY: str
+
     class Config:
         env_file = ".env"
 

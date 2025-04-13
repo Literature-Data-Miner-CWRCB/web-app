@@ -13,6 +13,7 @@ from llama_index.core.schema import BaseNode, MetadataMode
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.core import VectorStoreIndex
 from core.embeddings.gemini import GoogleGenAIEmbedding
+from core.embeddings.cohere import rerank_nodes
 
 logger = logging.getLogger(__name__)
 
@@ -497,14 +498,19 @@ class ExtractionPipeline:
             Extracted and structured data
         """
         try:
-            # Step 1: Retrieve relevant chunks
-            chunks = self.text_retriever.retrieve(query)
-            if not chunks:
+            # Step 1: Retrieve relevant document nodes
+            chunk_nodes = self.text_retriever.retrieve(query)  # retrieve 20 chunks
+            if not chunk_nodes:
                 logger.warning("No relevant chunks found")
                 return schema_model()
 
-            # Prepare context for this batch, including previously extracted entities
-            context = self.context_manager.prepare_context(chunks)
+            # Step 2: Rerank chunks
+            reranked_chunk_nodes = rerank_nodes(
+                query=query, nodes=chunk_nodes, top_n=10
+            )  # rerank the 20 chunks based on the query and return the top 10 chunks
+
+            # Step 3: Prepare context
+            context = self.context_manager.prepare_context(nodes=reranked_chunk_nodes)
 
             # Extract data according to schema
             return self._extract_data(
