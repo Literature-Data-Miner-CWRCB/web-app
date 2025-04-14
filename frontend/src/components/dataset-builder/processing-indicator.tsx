@@ -3,7 +3,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProcessingStage, ProcessingStatus } from "@/types/events";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { CheckCircle, AlertTriangle, Loader2, SearchIcon } from "lucide-react";
 import { cva } from "class-variance-authority";
 
 interface ProcessingIndicatorProps {
@@ -12,7 +12,7 @@ interface ProcessingIndicatorProps {
 
 const stageIcons = {
 	[ProcessingStage.IDLE]: null,
-	[ProcessingStage.SEARCHING]: <Loader2 className="h-4 w-4 animate-spin" />,
+	[ProcessingStage.SEARCHING]: <SearchIcon className="h-4 w-4 animate-pulse" />,
 	[ProcessingStage.EXTRACTING]: <Loader2 className="h-4 w-4 animate-spin" />,
 	[ProcessingStage.TRANSFORMING]: (
 		<Loader2 className="h-4 w-4 animate-spin" />
@@ -58,8 +58,8 @@ export function ProcessingIndicator({ status }: ProcessingIndicatorProps) {
 					<div className="flex items-center gap-2">
 						{stageIcons[status.stage]}
 						<AlertTitle>
-							{status.stage.charAt(0).toUpperCase() +
-								status.stage.slice(1)}
+							{status.stage?.charAt(0).toUpperCase() +
+								status.stage?.slice(1)}
 						</AlertTitle>
 					</div>
 					<AlertDescription>{status.message}</AlertDescription>
