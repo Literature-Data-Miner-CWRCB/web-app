@@ -17,6 +17,18 @@ services:
       resources:
         limits:
           memory: 256M
+
+  letta:
+    image: letta/letta:latest
+    ports:
+      - "8283:8283"
+    volumes:
+      - ./backend/.letta/.persist/pgdata:/var/lib/postgresql/data
+    env_file:
+      - ./backend/.env
+    networks:
+      - app-network
+
   web:
     build: 
       context: backend
@@ -49,7 +61,7 @@ services:
     env_file:
       - ./backend/.env
     healthcheck:
-      test: ["CMD", "celery", "-A", "core.workers.celery_main", "inspect", "ping"]
+      test: ["CMD", "celery", "-A", "background.celery_main", "inspect", "ping"]
       interval: 10s
       timeout: 30s
       retries: 3
@@ -76,6 +88,8 @@ services:
       redis:
         condition: service_healthy
       web:
+        condition: service_healthy
+      celery-worker:
         condition: service_healthy
     restart: always
     networks:

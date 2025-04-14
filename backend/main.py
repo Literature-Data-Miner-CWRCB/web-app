@@ -1,5 +1,6 @@
 import logging
 import logging.config
+import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -7,8 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from config.settings import settings
 from api.v1.router import api_router
-from core.workers.celery_main import celery_app
-from core.websockets.manager import connection_manager
+from background.celery_main import celery_app
+from core.websocket_manager import connection_manager
 
 # Create logs directory if it doesn't exist
 logs_dir = Path("logs")
@@ -145,3 +146,41 @@ async def health_check():
         health_status["status"] = "degraded"
 
     return health_status
+
+
+@app.get("/ws/status")
+async def websocket_status():
+    """
+    Detailed status endpoint for WebSocket service.
+
+    Returns:
+        JSON response with detailed WebSocket service status
+    """
+    # Get active connections
+    async with connection_manager._lock:
+        client_ids = list(connection_manager.active_connections.keys())
+
+    return {
+        "status": "healthy",
+        "active_connections": len(client_ids),
+        "client_ids": client_ids,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
+
+
+@app.get("/ws/health")
+async def websocket_health():
+    """
+    Health check endpoint for WebSocket service.
+
+    Returns:
+        JSON response with WebSocket service status
+    """
+    # Count active connections
+    connection_count = len(connection_manager.active_connections)
+
+    return {
+        "status": "healthy",
+        "active_connections": connection_count,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }

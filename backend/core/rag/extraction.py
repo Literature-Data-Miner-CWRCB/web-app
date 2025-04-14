@@ -3,8 +3,8 @@ import time
 import enum
 import logging
 import tiktoken
-from typing import List, Dict, Any, Optional, Union, TypeVar, Generic
-from pydantic import BaseModel, Field, create_model
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
 import instructor
 from qdrant_client import QdrantClient
 from groq import Groq
@@ -303,15 +303,16 @@ class ContextManager:
 #         return merged
 
 
-class ExtractionPipeline:
-    """End-to-end pipeline for structured data extraction."""
+class StructuredExtractor:
+    """Advanced RAG interface for extracting structured fields from documents."""
 
     DEFAULT_TOP_K = 20
     DEFAULT_QDRANT_TEXT_COLLECTION = "lit_miner_text_collection"
     DEFAULT_EMBEDDING_MODEL = "gemini-embedding-exp-03-07"
     DEFAULT_LLM_MODEL = "llama-3.3-70b-versatile"
 
-    def __init__(self):
+    def __init__(self, output_model: BaseModel):
+        self.output_model = output_model
         # Initialize components
         self._init_components()
 
@@ -376,7 +377,7 @@ class ExtractionPipeline:
         self,
         query: str,
         context: str,
-        output_schema: BaseModel,
+        output_model: BaseModel,
         memory_context: Optional[str] = None,
         examples: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
@@ -415,7 +416,7 @@ class ExtractionPipeline:
         ---------------------
         [JSON_SCHEMA]
         ---------------------
-        {json.dumps(output_schema.model_json_schema(), indent=2)}
+        {json.dumps(output_model.model_json_schema(), indent=2)}
         ---------------------
         [QUERY]
         ---------------------
@@ -432,10 +433,9 @@ class ExtractionPipeline:
 
         return prompt
 
-    def _extract_data(
+    def _extract(
         self,
         context: str,
-        schema_model: BaseModel,
         query: str,
         examples: Optional[List[Dict[str, Any]]] = None,
     ) -> BaseModel:
@@ -444,7 +444,7 @@ class ExtractionPipeline:
 
         Args:
             context: Document context to extract from
-            schema_model: Pydantic model defining the output schema
+            output_schema: Pydantic model defining the output schema
             query: User query to guide extraction
             examples: Optional examples of expected output format
 
@@ -454,15 +454,12 @@ class ExtractionPipeline:
         try:
             # Prepare system prompt for extraction
             system_prompt = self._create_extraction_prompt(
-                query=query, context=context, output_schema=schema_model
+                query=query, context=context, output_model=self.output_model
             )
-
-            # Extract structured data
-            logger.info(f"Extracting data with schema: {schema_model.__name__}")
 
             response = self.instructor_client.chat.completions.create(
                 model=self.DEFAULT_LLM_MODEL,
-                response_model=schema_model,
+                response_model=self.output_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                 ],
@@ -479,7 +476,6 @@ class ExtractionPipeline:
     def extract(
         self,
         query: str,
-        schema_model: BaseModel,
         filters: Optional[Dict[str, Any]] = None,
         max_chunks: int = MAX_RETRIEVED_CHUNKS,
         examples: Optional[List[Dict[str, Any]]] = None,
@@ -489,7 +485,6 @@ class ExtractionPipeline:
 
         Args:
             query: User query
-            schema_model: Pydantic model defining the output schema
             filters: Optional metadata filters for retrieval
             max_chunks: Maximum chunks to retrieve
             examples: Optional examples of expected output
@@ -498,11 +493,13 @@ class ExtractionPipeline:
             Extracted and structured data
         """
         try:
-            # Step 1: Retrieve relevant document nodes
-            chunk_nodes = self.text_retriever.retrieve(query)  # retrieve 20 chunks
+            # Step 1: Convert field definitions to Pydantic model
+
+            # Step 1: Do vector search and retrieve the top 20 chunks
+            chunk_nodes = self.text_retriever.retrieve(query)
             if not chunk_nodes:
                 logger.warning("No relevant chunks found")
-                return schema_model()
+                return self.output_schema()
 
             # Step 2: Rerank chunks
             reranked_chunk_nodes = rerank_nodes(
@@ -513,24 +510,13 @@ class ExtractionPipeline:
             context = self.context_manager.prepare_context(nodes=reranked_chunk_nodes)
 
             # Extract data according to schema
-            return self._extract_data(
+            structured_rows = self._extract(
                 context=context,
-                schema_model=schema_model,
                 query=query,
                 examples=examples,
             )
+
+            return structured_rows
         except Exception as e:
             logger.error(f"Error in extraction pipeline: {str(e)}")
             raise e
-
-    def _find_list_fields(self, schema_model: BaseModel) -> List[str]:
-        """Find all list fields in the schema model."""
-        list_fields = []
-
-        for field_name, field_info in schema_model.__annotations__.items():
-            # Check if field is a List
-            origin = getattr(field_info, "__origin__", None)
-            if origin == list or origin == List:
-                list_fields.append(field_name)
-
-        return list_fields
