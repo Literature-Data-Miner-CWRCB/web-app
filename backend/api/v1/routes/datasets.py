@@ -2,10 +2,9 @@ import logging
 import json
 import uuid
 from typing import Annotated, List, Dict, Type, Optional
-from pydantic import create_model, Field, BaseModel
 from fastapi import APIRouter, Form, HTTPException
 from fastapi.responses import JSONResponse
-from core.workers.tasks import generate_dataset_task
+from background.tasks import generate_dataset_task
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +41,10 @@ async def generate_dataset(
         HTTPException: If there's an error in the request parameters
     """
     try:
+        # Generate a client ID if not provided
+        if not client_id:
+            client_id = str(uuid.uuid4())
+
         # Validate input parameters
         if rows <= 0:
             raise ValueError("Number of rows must be greater than zero")
@@ -50,11 +53,6 @@ async def generate_dataset(
             raise ValueError("User query cannot be empty")
 
         logger.info(f"Generating dataset with model: {model_name}, rows: {rows}")
-        logger.debug(f"User query: {user_query}")
-
-        # Generate a client ID if not provided
-        if not client_id:
-            client_id = str(uuid.uuid4())
 
         # Queue the Celery task
         task = generate_dataset_task.delay(

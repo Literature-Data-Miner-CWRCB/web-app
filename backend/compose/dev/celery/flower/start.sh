@@ -5,7 +5,7 @@ set -o pipefail
 set -o nounset
 
 worker_ready() {
-    celery -A core.workers.celery_main inspect ping
+    celery -A background.celery_main inspect ping
 }
 
 until worker_ready; do
@@ -14,4 +14,4 @@ until worker_ready; do
 done
 >&2 echo "Celery workers are available"
 
-celery flower --app=core.workers.celery_main --broker="${CELERY_BROKER_URL}"
+celery flower --app=background.celery_main --broker="${CELERY_BROKER_URL}"

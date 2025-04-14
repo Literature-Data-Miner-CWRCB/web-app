@@ -5,4 +5,4 @@ set -o pipefail
 set -o nounset
 
 rm -f './celerybeat.pid'
-celery -A core.workers.celery_main beat --loglevel=info
+celery -A background.celery_main beat --loglevel=info
