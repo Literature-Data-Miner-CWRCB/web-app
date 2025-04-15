@@ -1,15 +1,14 @@
 import logging
 import logging.config
-import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from config.settings import settings
 from api.v1.router import api_router
 from background.celery_main import celery_app
-from core.websocket_manager import connection_manager
+from core.event_bus import event_bus
 
 # Create logs directory if it doesn't exist
 logs_dir = Path("logs")
@@ -25,12 +24,21 @@ async def lifespan(app: FastAPI):
     """
     Lifespan context manager for the FastAPI app.
     """
-    # Initialize the vector space
-    logger.info("Application starting up ...")
+    # Startup: Connect to Redis for event bus
+    try:
+        await event_bus.connect()
+        logger.info("Event bus connected")
+    except Exception as e:
+        logger.error(f"Failed to connect to event bus: {str(e)}")
 
     yield
-    # Perform shutdown tasks here
-    logger.info("Application shutting down ...")
+
+    # Shutdown: Clean up connections
+    try:
+        await event_bus.disconnect()
+        logger.info("Cleaned up SSE connections")
+    except Exception as e:
+        logger.error(f"Error cleaning up SSE connections: {str(e)}")
 
 
 app = FastAPI(
@@ -52,17 +60,6 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.FASTAPI_API_V1_STR)
-
-
-@app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    await connection_manager.connect(websocket, client_id)
-    try:
-        while True:
-            # Keep the connection alive and wait for messages
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        connection_manager.disconnect(client_id)
 
 
 @app.get("/tasks/{task_id}")
@@ -146,41 +143,3 @@ async def health_check():
         health_status["status"] = "degraded"
 
     return health_status
-
-
-@app.get("/ws/status")
-async def websocket_status():
-    """
-    Detailed status endpoint for WebSocket service.
-
-    Returns:
-        JSON response with detailed WebSocket service status
-    """
-    # Get active connections
-    async with connection_manager._lock:
-        client_ids = list(connection_manager.active_connections.keys())
-
-    return {
-        "status": "healthy",
-        "active_connections": len(client_ids),
-        "client_ids": client_ids,
-        "timestamp": datetime.datetime.now().isoformat(),
-    }
-
-
-@app.get("/ws/health")
-async def websocket_health():
-    """
-    Health check endpoint for WebSocket service.
-
-    Returns:
-        JSON response with WebSocket service status
-    """
-    # Count active connections
-    connection_count = len(connection_manager.active_connections)
-
-    return {
-        "status": "healthy",
-        "active_connections": connection_count,
-        "timestamp": datetime.datetime.now().isoformat(),
-    }
