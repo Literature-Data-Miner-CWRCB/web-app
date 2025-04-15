@@ -1,5 +1,5 @@
 // src/types/schema.ts
-export type SchemaFieldType = 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object';
+export type SchemaFieldType = 'str' | 'int' | 'float' | 'bool';
 
 export interface SchemaField {
     name: string;

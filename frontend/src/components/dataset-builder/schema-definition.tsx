@@ -156,7 +156,6 @@ export function SchemaDefinition({
 				</Table>
 				<Button
 					onClick={handleAddField}
-					className="mt-4"
 					variant="outline"
 					size="sm"
 				>

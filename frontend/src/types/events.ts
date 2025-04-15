@@ -1,20 +1,20 @@
 // src/types/events.ts
 import { DataSchema } from './schema';
 
-export enum ProcessingStage {
+export enum TaskStatus {
     IDLE = 'idle',
-    SEARCHING = 'searching',
-    EXTRACTING = 'extracting',
-    TRANSFORMING = 'transforming',
-    VALIDATING = 'validating',
-    COMPLETED = 'completed',
-    ERROR = 'error'
+    STARTED = 'started',
+    PROGRESS = 'progress',
+    SUCCESS = 'success',
+    FAILURE = 'failure',
+    REVOKED = 'revoked'
 }
 
-export interface ProcessingStatus {
-    stage: ProcessingStage;
-    message: string;
-    progress?: number;
+export interface TaskStage {
+    name: string;
+    description: string;
+    startedAt: Date;
+    completedAt: Date;
 }
 
 export interface DatasetResult {
