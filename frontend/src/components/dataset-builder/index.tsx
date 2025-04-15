@@ -2,10 +2,9 @@
 "use client";
 import { useState } from "react";
 import { useDatasetBuilder } from "@/hooks/useDatasetBuilder";
-import { useServerEvents } from "@/hooks/useServerEvents";
 import { DataSchema } from "@/types/schema";
 import { OutputFormat, FilterOption, DatasetQuery } from "@/types/dataset";
-import { ProcessingStage } from "@/types/events";
+import { TaskStatus } from "@/types/events";
 import { QueryInput } from "./query-input";
 import { FilterOptions } from "./filter-options";
 import { OutputFormatSelector } from "./output-format-selecter";
@@ -16,14 +15,44 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { DatasetResults } from "@/components/results/dataset-results";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { z } from "zod";
 
+// Define validation schema using Zod
+const searchQuerySchema = z
+	.string()
+	.min(1, "Search query is required")
+	.max(500, "Search query must be 500 characters or less");
+
+const fieldNameSchema = z
+	.string()
+	.min(1, "Field name is required")
+	.max(25, "Field name must be 25 characters or less")
+	.regex(/^[a-zA-Z_]+$/, "Only letters and underscores are allowed");
+
+const fieldDescriptionSchema = z
+	.string()
+	.min(1, "Description is required")
+	.max(100, "Description must be 100 characters or less");
+
+// Filter options
 const filterOptions: FilterOption[] = [
 	{ id: "peer-reviewed", name: "Peer-reviewed only" },
 	{ id: "open-access", name: "Open access" },
 	{ id: "recent", name: "Last 5 years" },
-	{ id: "high-citations", name: "Highly cited" },
-	{ id: "include-code", name: "Include code repositories" },
 ];
+
+interface FormError {
+	query?: string;
+	definitions?: {
+		[key: string]: {
+			name?: string;
+			description?: string;
+		};
+	};
+}
 
 export function DatasetBuilder() {
 	// Form state
@@ -40,8 +69,8 @@ export function DatasetBuilder() {
 		schema.every((field) => field.name.trim() !== "");
 
 	// Processing state and hooks
-	const { status, result, buildDataset } = useDatasetBuilder();
-	const { startListening, stopListening } = useServerEvents();
+	const { status, result, buildDataset, error, cancelTask } =
+		useDatasetBuilder();
 
 	const handleBuild = () => {
 		if (!isFormValid) return;
@@ -54,8 +83,23 @@ export function DatasetBuilder() {
 		};
 
 		buildDataset(query, schema);
-		startListening();
 	};
+
+	const handleCancel = async () => {
+		if (
+			window.confirm(
+				"Are you sure you want to cancel dataset generation?"
+			)
+		) {
+			await cancelTask();
+		}
+	};
+
+	// Check if the process is currently running
+	const isProcessing =
+		status !== TaskStatus.IDLE &&
+		status !== TaskStatus.SUCCESS &&
+		status !== TaskStatus.FAILURE;
 
 	return (
 		<div className="space-y-6">
@@ -105,18 +149,25 @@ export function DatasetBuilder() {
 
 				<SchemaDefinition schema={schema} onSchemaChange={setSchema} />
 
-				<ProcessingIndicator status={status} />
+				{error && (
+					<Alert variant="destructive">
+						<AlertCircle className="h-4 w-4" />
+						<AlertDescription>{error}</AlertDescription>
+					</Alert>
+				)}
 
-				<div className="flex justify-center">
+				<div className="flex justify-center gap-4">
 					<BuildButton
 						onClick={handleBuild}
-						isLoading={
-							status.stage !== ProcessingStage.IDLE &&
-							status.stage !== ProcessingStage.COMPLETED &&
-							status.stage !== ProcessingStage.ERROR
-						}
-						isDisabled={!isFormValid}
+						isLoading={isProcessing}
+						isDisabled={isProcessing}
 					/>
+
+					{isProcessing && (
+						<Button variant="destructive" onClick={handleCancel}>
+							Cancel
+						</Button>
+					)}
 				</div>
 			</div>
 
