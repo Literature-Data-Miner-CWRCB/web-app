@@ -85,11 +85,10 @@ class DatasetGenerator:
             if progress_callback:
                 progress_callback(
                     {
-                        "status": "started",
-                        "message": "Initializing dataset generation",
-                        "progress": 0,
+                        "status": "processing",
+                        "message": "Processing query and extracting structured data",
+                        "progress": 50,
                         "total": 100,
-                        "stage": "initialization",
                     }
                 )
 
@@ -111,8 +110,6 @@ class DatasetGenerator:
                         "message": f"Error generating dataset: {str(e)}",
                         "progress": 0,
                         "total": 100,
-                        "stage": "error",
-                        "error": str(e),
                     }
                 )
 

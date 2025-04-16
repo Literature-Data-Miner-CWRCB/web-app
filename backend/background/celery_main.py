@@ -69,3 +69,38 @@ def task_success_handler(sender=None, **kwargs):
 def task_retry_handler(request, reason, einfo, **kwargs):
     """Log task retries."""
     logger.warning(f"Task {request.id} is being retried. Reason: {reason}")
+
+
+class CeleryTaskManager:
+    """Object-oriented wrapper for Celery functionality."""
+
+    @staticmethod
+    def get_task_info(task_id: str) -> dict:
+        """Get information about a task."""
+        task_info = celery_app.AsyncResult(task_id)
+        return {
+            "task_id": task_id,
+            "status": task_info.status,
+            "result": task_info.result,
+            "traceback": task_info.traceback,
+        }
+
+    @staticmethod
+    def revoke_task(task_id: str, terminate: bool = False) -> bool:
+        """Revoke a task."""
+        try:
+            celery_app.control.revoke(task_id, terminate=terminate)
+            logger.info(f"Task {task_id} has been revoked (terminate={terminate})")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to revoke task {task_id}: {str(e)}")
+            return False
+
+    @staticmethod
+    def purge_tasks() -> None:
+        """Purge all pending tasks."""
+        try:
+            celery_app.control.purge()
+            logger.info("All pending tasks have been purged")
+        except Exception as e:
+            logger.error(f"Failed to purge tasks: {str(e)}")

@@ -77,6 +77,9 @@ class ConnectionManager:
                 logger.warning(
                     f"Attempted to send message to non-existent client: {client_id}"
                 )
+                # Log all connected clients for debugging
+                connected_clients = list(self.active_connections.keys())
+                logger.debug(f"Currently connected clients: {connected_clients}")
                 return False
 
             websocket = self.active_connections[client_id]

@@ -19,7 +19,6 @@ async def generate_dataset(
     field_definitions_json_str: Annotated[
         str, Form(description="Field definitions in JSON format")
     ],
-    client_id: Annotated[str, Form(description="Client ID for real-time updates")],
 ) -> JSONResponse:
     """
     API endpoint to initiate dataset generation.
@@ -32,7 +31,6 @@ async def generate_dataset(
         rows: Number of rows to generate in the dataset
         model_name: Name to use for the Pydantic model
         field_definitions_json_str: JSON string defining the schema fields
-        client_id: Optional client ID for WebSocket communication
 
     Returns:
         JSONResponse with task information and WebSocket details
@@ -41,9 +39,8 @@ async def generate_dataset(
         HTTPException: If there's an error in the request parameters
     """
     try:
-        # Generate a client ID if not provided
-        if not client_id:
-            client_id = str(uuid.uuid4())
+        # TODO: replace with user client id
+        client_id = str(uuid.uuid4())
 
         # Validate input parameters
         if rows <= 0:
@@ -74,7 +71,6 @@ async def generate_dataset(
                 "client_id": client_id,
                 "task_id": task.id,
                 "status": "processing",
-                "websocket_url": f"/ws/{client_id}",
             }
         )
     except ValueError as ve:

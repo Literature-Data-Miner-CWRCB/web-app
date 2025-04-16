@@ -17,15 +17,8 @@ class TaskStatus(str, Enum):
 
 class TaskStage(BaseModel):
     """Model for task stage information."""
-
-    name: str
+    status: TaskStatus
     description: Optional[str] = None
-    started_at: datetime = Field(default_factory=datetime.now(timezone.utc))
-    completed_at: Optional[datetime] = None
-
-    def complete(self) -> None:
-        """Mark the stage as completed."""
-        self.completed_at = datetime.now(timezone.utc)
 
 
 class TaskStatusUpdate(BaseModel):
@@ -35,8 +28,6 @@ class TaskStatusUpdate(BaseModel):
     status: TaskStatus
     stage: Optional[TaskStage] = None
     message: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.now(timezone.utc))
-
 
 class TaskInfo(BaseModel):
     """Task info model."""
@@ -45,5 +36,3 @@ class TaskInfo(BaseModel):
     status: TaskStatus
     current_stage: Optional[TaskStage] = None
     result: Optional[Any] = None
-    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=datetime.now(timezone.utc))

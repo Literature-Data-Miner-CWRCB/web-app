@@ -17,3 +17,6 @@ python-json-logger
 platformdirs
 python-multipart
 redis
+instructor
+groq
+letta-client

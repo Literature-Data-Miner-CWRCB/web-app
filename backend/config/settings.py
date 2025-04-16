@@ -32,8 +32,18 @@ class Settings(BaseSettings):
     # Cohere
     COHERE_API_KEY: str
 
+    # Event channel settings
+    TASK_STATUS_CHANNEL: str = "task-status-updates"
+
+    @property
+    def redis_url(self) -> str:
+        """Generate Redis URL from settings."""
+        auth = f":{self.REDIS_PASSWORD}@" if self.REDIS_PASSWORD else ""
+        return f"redis://{auth}{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+
     class Config:
         env_file = ".env"
+        case_sensitive = True
 
 
 settings = Settings()
