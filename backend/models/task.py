@@ -7,32 +7,19 @@ from datetime import datetime, timezone
 class TaskStatus(str, Enum):
     """Enum for task status."""
 
-    PENDING = "PENDING"
-    STARTED = "STARTED"
-    PROGRESS = "PROGRESS"
-    SUCCESS = "SUCCESS"
-    FAILURE = "FAILURE"
-    REVOKED = "REVOKED"
-
-
-class TaskStage(BaseModel):
-    """Model for task stage information."""
-    status: TaskStatus
-    description: Optional[str] = None
+    PENDING = "pending"
+    STARTED = "started"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    REVOKED = "revoked"
 
 
 class TaskStatusUpdate(BaseModel):
     """Model for task status updates that will be sent through events."""
 
-    task_id: str
-    status: TaskStatus
-    stage: Optional[TaskStage] = None
-    message: Optional[str] = None
-
-class TaskInfo(BaseModel):
-    """Task info model."""
-
-    task_id: str
-    status: TaskStatus
-    current_stage: Optional[TaskStage] = None
-    result: Optional[Any] = None
+    task_id: str = Field(..., description="The ID of the task")
+    status: TaskStatus = Field(..., description="The status of the task")
+    message: Optional[str] = Field(
+        None, description="The message of the task to be displayed to the user"
+    )
