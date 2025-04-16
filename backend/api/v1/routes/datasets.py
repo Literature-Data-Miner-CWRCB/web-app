@@ -67,17 +67,8 @@ async def generate_dataset(
         # Return immediately with response containing task info and client_id
         return JSONResponse(
             content={
-                "message": "Dataset generation started",
-                "client_id": client_id,
                 "task_id": task.id,
-                "status": "processing",
             }
-        )
-    except ValueError as ve:
-        # Handle validation errors
-        logger.warning(f"Validation error: {str(ve)}")
-        return JSONResponse(
-            content={"message": f"Validation error: {str(ve)}"}, status_code=400
         )
     except Exception as e:
         # Handle unexpected errors
