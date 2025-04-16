@@ -114,10 +114,11 @@ class EventBus:
             return False
 
         try:
+            # Serialize message to JSON string before publishing
             json_message = json.dumps(message)
-            await self._redis.publish(channel, json_message)
-            logger.debug(f"Published message to channel {channel}: {json_message}")
-            return True
+            response = await self._redis.publish(channel, json_message)
+            logger.debug(f"Published message to channel {channel}: {message}")
+            return response > 0
         except Exception as e:
             logger.error(f"Failed to publish message to channel {channel}: {str(e)}")
             return False
@@ -125,11 +126,9 @@ class EventBus:
     async def publish_task_update(self, update: TaskStatusUpdate) -> bool:
         """Publish a task status update. Returns success status."""
         task_specific_channel = f"{settings.TASK_STATUS_CHANNEL}:{update.task_id}"
-        general_success = await self.publish(
-            settings.TASK_STATUS_CHANNEL, update.model_dump()
+        return await self.publish(
+            channel=task_specific_channel, message=update.model_dump(mode="json")
         )
-        task_success = await self.publish(task_specific_channel, update.model_dump())
-        return general_success and task_success
 
     async def subscribe(self, channel: str) -> bool:
         """Subscribe to a channel. Returns success status."""
@@ -165,24 +164,10 @@ class EventBus:
                     channel = message.get("channel")
                     data = message.get("data")
 
-                    if isinstance(data, str):
-                        try:
-                            parsed_data = json.loads(data)
-                            # Add channel information to help with debugging
-                            if isinstance(parsed_data, dict) and channel:
-                                parsed_data.setdefault("_meta", {})["channel"] = channel
-                            yield parsed_data
-                            consecutive_errors = 0
-                        except json.JSONDecodeError:
-                            logger.error(
-                                f"Failed to decode JSON message from channel {channel}: {data}"
-                            )
-                            yield {
-                                "error": "Invalid JSON",
-                                "raw_data": data,
-                                "channel": channel,
-                            }
-
+                    parse_data = json.loads(data)
+                    parse_data["channel"] = channel
+                    print("parse_data", parse_data)
+                    yield parse_data
                 await asyncio.sleep(0.01)  # Small delay to avoid CPU spinning
 
             except asyncio.CancelledError:

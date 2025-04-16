@@ -12,10 +12,16 @@ from celery import Task
 
 # Local imports
 from background.celery_main import celery_app
+from core.rag.extraction import StructuredExtractor
 from core.pipelines.dataset_generation import DatasetGenerator
-from utils.pydantic_utils import convert_to_row_model
+from utils.pydantic_utils import (
+    convert_to_row_model,
+    wrap_row_schema_with_citations,
+    create_dataset_model,
+)
 from core.event_bus import event_bus
 from models.task import TaskStatus, TaskStatusUpdate
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +31,8 @@ class BaseTask(Task):
     Enables tasks to send real-time updates via the EventBus.
     """
     abstract = True
-    _current_stage: Optional[str] = None
     _event_loop = None
-    _max_update_retries = 3
+    _max_update_retries = 2
 
     def get_event_loop(self):
         """Get or create an event loop for async operations."""
@@ -45,26 +50,37 @@ class BaseTask(Task):
         loop = self.get_event_loop()
         return loop.run_in_executor(None, func, *args, **kwargs)
 
-    def send_update(
+    def _send_update(
         self, status: TaskStatus, message: Optional[str] = None, retry=0
     ) -> bool:
         """
         Send a task status update with retry mechanism.
         Returns True if the update was sent successfully, False otherwise.
+        If no clients are connected, returns True without sending the update.
         """
         update = TaskStatusUpdate(
             task_id=str(self.request.id),
             status=status,
-            stage=self._current_stage,
             message=message,
-            timestamp=time.time(),
         )
 
         # Create an event loop or use the existing one
         loop = self.get_event_loop()
 
-        # Run the coroutine to publish the update
         try:
+            # First check if there are any active clients connected
+            has_clients = loop.run_until_complete(
+                self._check_for_active_clients(update.task_id)
+            )
+
+            # If no clients are connected, log this and return success (no need to retry)
+            if not has_clients:
+                logger.debug(
+                    f"No active clients for task {update.task_id}, skipping status update"
+                )
+                return True
+
+            # Otherwise, try to send the update
             success = loop.run_until_complete(event_bus.publish_task_update(update))
 
             if not success and retry < self._max_update_retries:
@@ -74,82 +90,46 @@ class BaseTask(Task):
                     f"Failed to send task update, retrying in {backoff_time:.2f}s (attempt {retry+1}/{self._max_update_retries})"
                 )
                 time.sleep(backoff_time)
-                return self.send_update(status, message, retry + 1)
+                return self._send_update(status, message, retry + 1)
 
             if not success and retry >= self._max_update_retries:
                 logger.error(f"Failed to send task update after {retry} retries")
 
             return success
         except Exception as e:
-            if retry < self._max_update_retries:
-                # Wait and retry with exponential backoff
-                backoff_time = 0.5 * (2**retry)
-                logger.warning(
-                    f"Error sending task update: {str(e)}, retrying in {backoff_time:.2f}s (attempt {retry+1}/{self._max_update_retries})"
-                )
-                time.sleep(backoff_time)
-                return self.send_update(status, message, retry + 1)
-
-            logger.error(f"Failed to send task update: {str(e)}")
+            logger.error(f"Failed to send task update: {str(e)}", exc_info=True)
             return False
 
-    def set_stage(self, stage_name: str, message: Optional[str] = None) -> bool:
+    async def _check_for_active_clients(self, task_id: str) -> bool:
         """
-        Set the current stage of the task and send an update.
-        Returns True if the update was sent successfully, False otherwise.
+        Check if there are any clients subscribed to updates for this task.
+        Returns True if there are active clients, False otherwise.
         """
-        success = self.send_update(TaskStatus.PROGRESS, message=message)
-
-        if success:
-            logger.info(f"Task {self.request.id} entered stage: {stage_name}")
-        else:
-            logger.warning(
-                f"Task {self.request.id} entered stage {stage_name} but failed to send update"
-            )
-
-        return success
-
-    def update_progress(
-        self, current: int, total: int, message: Optional[str] = None
-    ) -> bool:
-        """
-        Update the progress of the current task stage.
-        Returns True if the update was sent successfully, False otherwise.
-        """
-        if total <= 0:
-            percentage = 0
-        else:
-            percentage = min(100, max(0, int((current / total) * 100)))
-
-        progress_update = TaskStatusUpdate(
-            task_id=str(self.request.id),
-            status=TaskStatus.PROGRESS,
-            stage=self._current_stage,
-            message=message or f"Progress: {percentage}%",
-            progress={"current": current, "total": total, "percentage": percentage},
-            timestamp=time.time(),
-        )
-
-        loop = self.get_event_loop()
+        task_specific_channel = f"{settings.TASK_STATUS_CHANNEL}:{task_id}"
         try:
-            success = loop.run_until_complete(
-                event_bus.publish_task_update(progress_update)
-            )
-            if success:
-                logger.debug(f"Task {self.request.id} progress: {percentage}%")
-            else:
-                logger.warning(
-                    f"Failed to send progress update for task {self.request.id}"
-                )
-            return success
+            # Use the Redis API to check if there are any subscribers to this channel
+            if not await event_bus._ensure_connected():
+                return False
+
+            subscribers = await event_bus._redis.pubsub_numsub(task_specific_channel)
+            # subscribers returns a list of tuples (channel_name, subscriber_count)
+            return subscribers and subscribers[0][1] > 0
         except Exception as e:
-            logger.error(f"Error sending progress update: {str(e)}")
-            return False
+            logger.warning(f"Failed to check for active clients: {str(e)}")
+            # In case of error, default to sending updates
+            return True
+
+    def set_state(self, task_status: TaskStatus, message: Optional[str] = None) -> bool:
+        """
+        Set the current state of the task and send an update.
+        Returns True if the update was sent successfully, False otherwise.
+        """
+        return self._send_update(task_status, message)
 
     def on_success(self, retval, task_id, args, kwargs) -> None:
         """Handler called on task success."""
-        success = self.send_update(
-            TaskStatus.SUCCESS, message="Task completed successfully"
+        success = self._send_update(
+            TaskStatus.COMPLETED, message="Task completed successfully"
         )
         if not success:
             logger.warning(f"Failed to send success update for task {task_id}")
@@ -158,7 +138,7 @@ class BaseTask(Task):
     def on_failure(self, exc, task_id, args, kwargs, einfo) -> None:
         """Handler called on task failure."""
         error_message = f"Task failed: {str(exc)}"
-        success = self.send_update(TaskStatus.FAILURE, message=error_message)
+        success = self._send_update(TaskStatus.FAILED, message=error_message)
         if not success:
             logger.warning(f"Failed to send failure update for task {task_id}")
         super().on_failure(exc, task_id, args, kwargs, einfo)
@@ -189,53 +169,44 @@ def generate_dataset_task(
     logger.info(f"Starting dataset generation task for client {client_id}")
 
     try:
-        # Report task started
-        self.set_stage(TaskStatus.STARTED, message="Task started")
+        self.set_state(TaskStatus.STARTED, message="Task started")
+        time.sleep(10)
 
-        # Parse the field definitions
-        try:
-            field_definitions = json.loads(field_definitions_json_str)
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid field definitions JSON: {str(e)}")
-            raise ValueError(f"Invalid field definitions JSON: {str(e)}")
-
+        self.set_state(
+            TaskStatus.IN_PROGRESS, message="Processing query and data schema ..."
+        )
         row_model = convert_to_row_model(
             field_definitions_json_str=field_definitions_json_str
         )
-        dataset_generator = DatasetGenerator(row_model=row_model)
+        row_model_with_citations = wrap_row_schema_with_citations(row_model=row_model)
+        dataset_model = create_dataset_model(row_model=row_model_with_citations)
+        extractor = StructuredExtractor(dataset_model)
 
-        # # Track progress for each 10% of rows
-        # progress_interval = max(1, rows // 10)
-
-        # def progress_callback(current_row: int):
-        #     if current_row % progress_interval == 0 or current_row == rows:
-        #         self.update_progress(
-        #             current=current_row,
-        #             total=rows,
-        #             message=f"Generated {current_row}/{rows} rows",
-        #         )
-
-        # Call the actual generator with the progress callback
-        result = dataset_generator.generate(
-            query=user_query, rows=rows, progress_callback=None
+        self.set_state(
+            TaskStatus.IN_PROGRESS, message="Retrieving and extracting data ..."
         )
+        extracted_items = extractor.extract(query=user_query)
 
-        # Format the result to match the frontend's expected structure
-        formatted_result = {
-            "rows": result.get("items", {}).get("rows", []),
-            "schema": [
-                {"name": field_def["name"], "type": field_def["type"]}
-                for field_def in field_definitions
-            ],
-            "citations": result.get("items", {}).get("citations", []),
+        self.set_state(
+            TaskStatus.IN_PROGRESS, message="Preparing data for the dataset ..."
+        )
+        # TODO: Prepare data for the dataset
+
+        return {
+            "success": True,
+            "data": extracted_items.model_dump(),
         }
-
-        logger.info(f"Dataset generation completed successfully for client {client_id}")
-        return formatted_result
 
     except Exception as e:
         error_details = traceback.format_exc()
         error_message = f"Dataset generation error: {str(e)}"
         logger.error(f"{error_message}\n{error_details}", exc_info=True)
 
-        raise
+        self.set_state(
+            TaskStatus.FAILED, message="Something went wrong. Try again later."
+        )
+
+        return {
+            "success": False,
+            "error": str(e),
+        }

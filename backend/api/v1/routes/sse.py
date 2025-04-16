@@ -95,14 +95,6 @@ async def event_generator(
                 )
                 continue
 
-            # Only forward messages for the requested task_id if specified
-            if task_id and message.get("task_id") != task_id:
-                continue
-
-            # Add message type for better client handling
-            if "type" not in message:
-                message["type"] = "task_update"
-
             yield format_sse_message(message)
 
             # If the task is in a final state, close the connection
